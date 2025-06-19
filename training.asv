@@ -1,0 +1,167 @@
+clear; clc;
+
+currentPath = pwd;
+if contains(currentPath, 'PCD')
+    pcdIdx = strfind(currentPath, 'PCD');
+    rootFolder = fullfile(currentPath(1:pcdIdx+2), 'Sample');
+else
+    rootFolder = fullfile(pwd, 'Sample');
+end
+defaultK = 5;
+
+if ~exist(rootFolder, 'dir')
+    error('Folder tidak ditemukan: %s', rootFolder);
+end
+
+imds = imageDatastore(rootFolder, ...
+    'IncludeSubfolders', true, ...
+    'LabelSource', 'foldernames');
+
+if isempty(imds.Files)
+    error('Tidak ada file gambar ditemukan di folder: %s', rootFolder);
+end
+
+numImages = numel(imds.Files);
+fprintf('=== DATASET INFO ===\n');
+fprintf('Total gambar ditemukan: %d\n', numImages);
+fprintf('Distribusi kelas:\n');
+labelCounts = countEachLabel(imds);
+disp(labelCounts);
+
+fprintf('\n=== PREPROCESSING + HOG EXTRACTION ===\n');
+fprintf('Memproses gambar dan mengekstrak fitur HOG...\n');
+
+I0 = readimage(imds, 1);
+I0 = imresize(I0, [28 28]);
+if size(I0,3)==3
+    I0 = rgb2gray(I0);
+end
+[hogFeat, ~] = extractHOGFeatures(I0);
+hogLength = length(hogFeat);
+
+X = zeros(numImages, hogLength);
+Y = cell(numImages,1);
+
+for i = 1:numImages
+    I = readimage(imds, i);
+    
+    I = imresize(I, [28 28]);
+    if size(I,3)==3
+        I = rgb2gray(I);
+    end
+    
+    X(i,:) = extractHOGFeatures(I);
+    Y{i} = char(imds.Labels(i));
+    
+    if mod(i, 1000) == 0
+        fprintf('Processed: %d/%d\n', i, numImages);
+    end
+end
+Y = categorical(Y);
+
+uniqueLabels = categories(Y);
+numClasses = length(uniqueLabels);
+
+Xtrain = X;
+Ytrain = Y;
+Xtest = X;
+Ytest = Y;
+
+fprintf('Using all %d samples for both training and testing\n', numImages);
+
+fprintf('\n=== TRAINING ===\n');
+k = defaultK;
+fprintf('Training KNN dengan k=%d...\n', k);
+
+tic;
+mdl = fitcknn(Xtrain, Ytrain, ...
+              'NumNeighbors', k, ...
+              'Distance', 'euclidean', ...
+              'Standardize', true);
+save('trainedKNN_HOG.mat', 'mdl');
+fprintf('Model KNN berhasil disimpan ke "trainedKNN_HOG.mat"\n');
+
+trainTime = toc;
+
+tic;
+Ypred = predict(mdl, Xtest);
+predTime = toc;
+
+[acc, precision, recall, f1, support] = evaluateModelDetailed(Ytest, Ypred, uniqueLabels);
+
+fprintf('\n');
+fprintf('=== PERFORMANCE RESULTS ===\n');
+fprintf('Training Time: %.4f seconds\n', trainTime);
+fprintf('Prediction Time: %.4f seconds\n', predTime);
+fprintf('\n');
+
+displayClassificationReport(uniqueLabels, precision, recall, f1, support, acc);
+
+% Confusion Matrix Visualization
+figure('Position', [100, 100, 800, 600]);
+confusionchart(Ytest, Ypred);
+title(sprintf('Confusion Matrix - KNN (k=%d, Accuracy=%.2f%%)', k, acc*100));
+
+% ===== HELPER FUNCTIONS =====
+
+function [acc, precision, recall, f1, support] = evaluateModelDetailed(Ytest, Ypred, uniqueLabels)
+    % Detailed evaluation function
+    acc = mean(Ypred == Ytest);
+    C = confusionmat(Ytest, Ypred);
+    
+    % Handle case where some classes might be missing in predictions
+    numClasses = length(uniqueLabels);
+    if size(C,1) < numClasses || size(C,2) < numClasses
+        % Expand confusion matrix to include all classes
+        newC = zeros(numClasses, numClasses);
+        predictedLabels = categories(Ypred);
+        trueLabels = categories(Ytest);
+        
+        for i = 1:length(trueLabels)
+            trueIdx = find(strcmp(uniqueLabels, trueLabels{i}));
+            for j = 1:length(predictedLabels)
+                predIdx = find(strcmp(uniqueLabels, predictedLabels{j}));
+                if ~isempty(trueIdx) && ~isempty(predIdx)
+                    newC(trueIdx, predIdx) = C(i, j);
+                end
+            end
+        end
+        C = newC;
+    end
+    
+    precision = diag(C) ./ sum(C, 2);
+    recall = diag(C) ./ sum(C, 1)';
+    support = sum(C, 2);
+    
+    precision(isnan(precision)) = 0;
+    recall(isnan(recall)) = 0;
+    
+    f1 = 2 * (precision .* recall) ./ (precision + recall);
+    f1(isnan(f1)) = 0;
+end
+
+function displayClassificationReport(labels, precision, recall, f1, support, accuracy)
+    fprintf('Classification report:\n\n');
+    fprintf('%12s %9s %8s %9s %9s\n', '', 'precision', 'recall', 'f1-score', 'support');
+    fprintf('\n');
+    
+    for i = 1:length(labels)
+        fprintf('%12s %9.6f %8.6f %9.6f %9d\n', ...
+            char(labels(i)), precision(i), recall(i), f1(i), support(i));
+    end
+    
+    fprintf('\n');
+    
+    totalSupport = sum(support);
+    macroAvgPrecision = mean(precision);
+    macroAvgRecall = mean(recall);
+    macroAvgF1 = mean(f1);
+    
+    weightedAvgPrecision = sum(precision .* support) / totalSupport;
+    weightedAvgRecall = sum(recall .* support) / totalSupport;
+    weightedAvgF1 = sum(f1 .* support) / totalSupport;
+    
+    fprintf('%12s %9s %8s %9.6f %9d\n', 'accuracy', '', '', accuracy, totalSupport);
+    fprintf('%12s %9.6f %8.6f %9.6f %9d\n', 'macro avg', macroAvgPrecision, macroAvgRecall, macroAvgF1, totalSupport);
+    fprintf('%12s %9.6f %8.6f %9.6f %9d\n', 'weighted avg', weightedAvgPrecision, weightedAvgRecall, weightedAvgF1, totalSupport);
+end
