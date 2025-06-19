@@ -6,7 +6,7 @@ if ~isfile(modelPath)
 end
 load(modelPath, 'mdl');
 
-imagePath = ['angka5.png'];
+imagePath = 'angka5.png';
 if ~isfile(imagePath)
     error('File gambar tidak ditemukan: %s', imagePath);
 end
