@@ -1,23 +1,28 @@
 clear; clc;
 
-load('trainedKNN_HOG.mat');
+modelPath = 'trainedKNN_HOG.mat';
+if ~isfile(modelPath)
+    error('Model KNN tidak ditemukan: %s', modelPath);
+end
+load(modelPath, 'mdl');
 
-imagePath = 'angka8.png';
+imagePath = ['angka5.png'];
 if ~isfile(imagePath)
     error('File gambar tidak ditemukan: %s', imagePath);
 end
 
-I = imread(imagePath);
-I = imresize(I, [28 28]);
-if size(I,3) == 3
-    I = rgb2gray(I);
-end
+Iorig = imread(imagePath);
+Iproc = preprocessImage(Iorig);
 
-hogFeat = extractHOGFeatures(I);
-
+hogFeat = extractHOGFeatures(Iproc);
 predictedLabel = predict(mdl, hogFeat);
+fprintf('%s\n', string(predictedLabel));
 
-fprintf('Prediksi label gambar: %s\n', string(predictedLabel));
-
-imshow(I);
-title(['Prediksi: ', char(predictedLabel)]);
+function Iout = preprocessImage(I)
+    I = imresize(I, [28 28]);
+    if size(I, 3) == 3
+        I = rgb2gray(I);
+    end
+    I = im2double(I);
+    Iout = I;
+end
