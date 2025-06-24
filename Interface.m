@@ -1,7 +1,6 @@
 function Interface
     close all;
 
-    % Load Model
     modelPath = 'trainedKNN_HOG.mat';
     if ~isfile(modelPath)
         errordlg('Model tidak ditemukan. Harap latih model terlebih dahulu.', 'Model Error');
@@ -9,100 +8,79 @@ function Interface
     end
     load(modelPath, 'mdl');
 
-    % Data struktur awal
     guiData = struct();
     guiData.model = mdl;
     guiData.currentImage = [];
-    guiData.hogFeatures = [];
 
-    % === Main Figure ===
-    mainFig = figure('Name', 'Digit Classification (HOG + KNN)', ...
+    mainFig = figure('Name', 'Digit Classification', ...
         'NumberTitle', 'off', 'MenuBar', 'none', ...
-        'Units', 'normalized', 'Position', [0.1 0.1 0.8 0.8], ...
-        'Color', [1 1 1], 'DeleteFcn', @(~,~) disp('GUI Closed'));
+        'Units', 'normalized', 'Position', [0.15 0.15 0.7 0.7], ...
+        'Color', [0.95 0.95 0.95], 'DeleteFcn', @(~,~) disp('GUI Closed'));
 
-    % Simpan guiData
     guidata(mainFig, guiData);
-
-    % === UI PANEL ===
     guiData = createUI(mainFig, guiData);
-
-    % Simpan ulang
     guidata(mainFig, guiData);
 end
 
 function guiData = createUI(mainFig, guiData)
-    %% Panel Kiri - Control Panel
-    ctrlPanel = uipanel('Parent', mainFig, 'Title', 'Control Panel', ...
-        'Units', 'normalized', 'Position', [0.02 0.6 0.25 0.35], ...
-        'FontSize', 10, 'FontWeight', 'bold');
+    
+    ctrlPanel = uipanel('Parent', mainFig, 'Title', 'Controls', ...
+        'Units', 'normalized', 'Position', [0.05 0.7 0.25 0.25], ...
+        'FontSize', 12, 'FontWeight', 'bold', 'BackgroundColor', [0.9 0.9 0.9]);
 
     uicontrol(ctrlPanel, 'Style', 'pushbutton', 'String', 'Import Image', ...
-        'Units', 'normalized', 'Position', [0.1 0.7 0.8 0.2], ...
-        'BackgroundColor', [0.2 0.6 0.8], 'ForegroundColor', 'w', ...
-        'FontSize', 12, 'Callback', @importImageCallback);
+        'Units', 'normalized', 'Position', [0.1 0.6 0.8 0.3], ...
+        'BackgroundColor', [0.2 0.7 0.9], 'ForegroundColor', 'w', ...
+        'FontSize', 14, 'FontWeight', 'bold', 'Callback', @importImageCallback);
 
     uicontrol(ctrlPanel, 'Style', 'pushbutton', 'String', 'Clear All', ...
-        'Units', 'normalized', 'Position', [0.1 0.4 0.8 0.2], ...
-        'BackgroundColor', [0.8 0.2 0.2], 'ForegroundColor', 'w', ...
-        'FontSize', 12, 'Callback', @clearAllCallback);
+        'Units', 'normalized', 'Position', [0.1 0.2 0.8 0.3], ...
+        'BackgroundColor', [0.9 0.3 0.3], 'ForegroundColor', 'w', ...
+        'FontSize', 14, 'FontWeight', 'bold', 'Callback', @clearAllCallback);
 
-    %% Panel Preprocessing
-    prePanel = uipanel('Parent', mainFig, 'Title', 'Preprocessing Options', ...
-        'Units', 'normalized', 'Position', [0.02 0.2 0.25 0.38]);
+    resultPanel = uipanel('Parent', mainFig, 'Title', 'Results', ...
+        'Units', 'normalized', 'Position', [0.05 0.25 0.25 0.4], ...
+        'FontSize', 12, 'FontWeight', 'bold', 'BackgroundColor', [0.9 0.9 0.9]);
 
-    uicontrol(prePanel, 'Style', 'text', 'String', 'Resize to:', ...
-        'Units', 'normalized', 'Position', [0.1 0.85 0.8 0.1], ...
-        'HorizontalAlignment', 'left');
+    guiData.predText = uicontrol(resultPanel, 'Style', 'text', ...
+        'String', 'Prediction: -', 'FontSize', 16, 'FontWeight', 'bold', ...
+        'Units', 'normalized', 'Position', [0.05 0.85 0.9 0.12], ...
+        'BackgroundColor', [0.9 0.9 0.9]);
 
-    guiData.sizePopup = uicontrol(prePanel, 'Style', 'popupmenu', ...
-        'String', {'28x28', '32x32', '64x64', '128x128'}, ...
-        'Units', 'normalized', 'Position', [0.1 0.75 0.8 0.08]);
+    guiData.detailText = uicontrol(resultPanel, 'Style', 'text', ...
+        'String', 'Top 3 Results:', 'FontSize', 11, 'FontWeight', 'bold', ...
+        'Units', 'normalized', 'Position', [0.05 0.75 0.9 0.08], ...
+        'BackgroundColor', [0.9 0.9 0.9], 'HorizontalAlignment', 'left');
 
-    guiData.contrastCheck = uicontrol(prePanel, 'Style', 'checkbox', ...
-        'String', 'Enhance Contrast', 'Units', 'normalized', ...
-        'Position', [0.1 0.6 0.8 0.1]);
+    guiData.resultsText = uicontrol(resultPanel, 'Style', 'text', ...
+        'String', '-', 'FontSize', 10, ...
+        'Units', 'normalized', 'Position', [0.05 0.25 0.9 0.5], ...
+        'BackgroundColor', [0.9 0.9 0.9], 'HorizontalAlignment', 'left');
 
-    guiData.noiseCheck = uicontrol(prePanel, 'Style', 'checkbox', ...
-        'String', 'Noise Reduction', 'Units', 'normalized', ...
-        'Position', [0.1 0.48 0.8 0.1]);
+    guiData.toggleButton = uicontrol(resultPanel, 'Style', 'pushbutton', ...
+        'String', 'Show All Results ▼', 'FontSize', 9, ...
+        'Units', 'normalized', 'Position', [0.05 0.05 0.9 0.15], ...
+        'BackgroundColor', [0.7 0.7 0.7], 'Callback', @toggleResultsCallback);
 
-    guiData.edgeCheck = uicontrol(prePanel, 'Style', 'checkbox', ...
-        'String', 'Edge Enhancement', 'Units', 'normalized', ...
-        'Position', [0.1 0.36 0.8 0.1]);
+    guiData.showAll = false;
 
-    uicontrol(prePanel, 'Style', 'pushbutton', ...
-        'String', 'Apply Preprocessing', 'FontSize', 11, ...
-        'Units', 'normalized', 'Position', [0.1 0.1 0.8 0.15], ...
-        'BackgroundColor', [0.6 0.8 0.2], ...
-        'Callback', @reprocessCurrentImage);
+    imgPanel = uipanel('Parent', mainFig, 'Title', 'Image Processing', ...
+        'Units', 'normalized', 'Position', [0.35 0.05 0.6 0.9], ...
+        'FontSize', 12, 'FontWeight', 'bold', 'BackgroundColor', [0.9 0.9 0.9]);
 
-    %% Panel Tampilan Gambar
-    imgPanel = uipanel('Parent', mainFig, 'Title', 'Image View & Prediction', ...
-        'Units', 'normalized', 'Position', [0.3 0.05 0.68 0.9]);
+    guiData.axesOriginal = axes('Parent', imgPanel, 'Position', [0.1 0.65 0.35 0.3]);
+    title(guiData.axesOriginal, 'Original Image', 'FontSize', 11, 'FontWeight', 'bold');
+    
+    guiData.axesPreprocessed = axes('Parent', imgPanel, 'Position', [0.55 0.65 0.35 0.3]);
+    title(guiData.axesPreprocessed, 'Grayscale', 'FontSize', 11, 'FontWeight', 'bold');
+    
+    guiData.axesFinal = axes('Parent', imgPanel, 'Position', [0.3 0.25 0.4 0.35]);
+    title(guiData.axesFinal, 'Final (28x28)', 'FontSize', 11, 'FontWeight', 'bold');
 
-    guiData.axesOriginal     = axes('Parent', imgPanel, 'Position', [0.05 0.7 0.25 0.25]);
-    guiData.axesPreprocessed = axes('Parent', imgPanel, 'Position', [0.35 0.7 0.25 0.25]);
-    guiData.axesGrayscale    = axes('Parent', imgPanel, 'Position', [0.65 0.7 0.25 0.25]);
-    guiData.axesHOG          = axes('Parent', imgPanel, 'Position', [0.05 0.35 0.25 0.25]);
-
-    guiData.predText = uicontrol(imgPanel, 'Style', 'text', ...
-        'String', 'Prediction: -', 'FontSize', 18, 'FontWeight', 'bold', ...
-        'Units', 'normalized', 'Position', [0.4 0.45 0.4 0.1]);
-
-    guiData.confText = uicontrol(imgPanel, 'Style', 'text', ...
-        'String', 'Confidence: -', 'FontSize', 14, ...
-        'Units', 'normalized', 'Position', [0.4 0.4 0.4 0.08]);
-
-    guiData.featureStats = uicontrol(imgPanel, 'Style', 'text', ...
-        'String', 'Feature Stats will appear here...', ...
-        'HorizontalAlignment', 'left', ...
-        'Units', 'normalized', 'Position', [0.05 0.02 0.9 0.3]);
 end
 
-%% === Callback & Helper ===
 function importImageCallback(~, ~)
-    [file, path] = uigetfile({'*.png;*.jpg;*.bmp'}, 'Select an Image');
+    [file, path] = uigetfile({'*.png;*.jpg;*.jpeg;*.bmp;*.tiff'}, 'Select an Image');
     if isequal(file, 0), return; end
 
     I = imread(fullfile(path, file));
@@ -110,82 +88,90 @@ function importImageCallback(~, ~)
     guiData.currentImage = I;
     guidata(gcf, guiData);
 
-    processAndDisplayImage(I, 'User Image');
+    processAndDisplayImage(I);
 end
 
 function clearAllCallback(~, ~)
     guiData = guidata(gcf);
-    cla(guiData.axesOriginal);     title(guiData.axesOriginal, 'Original');
-    cla(guiData.axesPreprocessed); title(guiData.axesPreprocessed, 'Preprocessed');
-    cla(guiData.axesGrayscale);    title(guiData.axesGrayscale, '28x28');
-    cla(guiData.axesHOG);          title(guiData.axesHOG, 'HOG');
+    cla(guiData.axesOriginal);
+    cla(guiData.axesPreprocessed);
+    cla(guiData.axesFinal);
+    
+    title(guiData.axesOriginal, 'Original Image', 'FontSize', 11, 'FontWeight', 'bold');
+    title(guiData.axesPreprocessed, 'Grayscale', 'FontSize', 11, 'FontWeight', 'bold');
+    title(guiData.axesFinal, 'Final (28x28)', 'FontSize', 11, 'FontWeight', 'bold');
 
     set(guiData.predText, 'String', 'Prediction: -');
-    set(guiData.confText, 'String', 'Confidence: -');
-    set(guiData.featureStats, 'String', 'Feature Stats will appear here...');
+    set(guiData.detailText, 'String', 'Top 3 Results:');
+    set(guiData.resultsText, 'String', '-');
+    set(guiData.toggleButton, 'String', 'Show All Results ▼');
+    
+    guiData.currentImage = [];
+    guiData.showAll = false;
+    guidata(gcf, guiData);
 end
 
-function reprocessCurrentImage(~, ~)
+function toggleResultsCallback(~, ~)
     guiData = guidata(gcf);
+    guiData.showAll = ~guiData.showAll;
+    
+    if guiData.showAll
+        set(guiData.detailText, 'String', 'All Results:');
+        set(guiData.toggleButton, 'String', 'Show Less ▲');
+    else
+        set(guiData.detailText, 'String', 'Top 3 Results:');
+        set(guiData.toggleButton, 'String', 'Show All Results ▼');
+    end
+    
+    guidata(gcf, guiData);
+    
     if ~isempty(guiData.currentImage)
-        processAndDisplayImage(guiData.currentImage, 'Updated Image');
+        processAndDisplayImage(guiData.currentImage);
     end
 end
 
-function processAndDisplayImage(I, ~)
+function processAndDisplayImage(I)
     guiData = guidata(gcf);
     
-    % Resize size
-    sizes = [28, 32, 64, 128];
-    resizeVal = sizes(get(guiData.sizePopup, 'Value'));
-
-    % Grayscale
     if size(I,3) == 3
-        I = rgb2gray(I);
+        I_gray = rgb2gray(I);
+    else
+        I_gray = I;
     end
-    I = im2double(imresize(I, [resizeVal resizeVal]));
-
-    if get(guiData.contrastCheck, 'Value')
-        I = adapthisteq(I);
-    end
-    if get(guiData.noiseCheck, 'Value')
-        I = wiener2(I, [3 3]);
-    end
-    if get(guiData.edgeCheck, 'Value')
-        I = imfilter(I, fspecial('unsharp'));
-    end
-
-    % Resize ke 28x28 untuk HOG
-    I28 = imresize(I, [28 28]);
-    hog = extractHOGFeatures(I28);
-
-    % Tampilkan gambar
+    
+    I_gray = im2double(I_gray);
+    I_final = imresize(I_gray, [28 28]);
+    
     imshow(guiData.currentImage, 'Parent', guiData.axesOriginal);
-    title(guiData.axesOriginal, 'Original');
+    imshow(I_gray, 'Parent', guiData.axesPreprocessed);
+    imshow(I_final, 'Parent', guiData.axesFinal);
 
-    imshow(I, 'Parent', guiData.axesPreprocessed);
-    title(guiData.axesPreprocessed, 'Preprocessed');
-
-    imshow(I28, 'Parent', guiData.axesGrayscale);
-    title(guiData.axesGrayscale, 'Final (28x28)');
-
-    try
-        [~, vis] = extractHOGFeatures(I28);
-        imshow(vis, 'Parent', guiData.axesHOG);
-    catch
-        imagesc(hog, 'Parent', guiData.axesHOG); title(guiData.axesHOG, 'HOG (raw)');
-    end
-
-    % Prediksi
-    hog = single(hog);  % MENGHILANGKAN warning pdist2
-    [label, score] = predict(guiData.model, hog);
-
-    % Update teks
+    hog = extractHOGFeatures(I_final);
+    hog = single(hog);
+    
+    [label, scores] = predict(guiData.model, hog);
+    
+    [sortedScores, sortedIndices] = sort(scores, 'descend');
+    classLabels = guiData.model.ClassNames;
+    
     set(guiData.predText, 'String', sprintf('Prediction: %s', string(label)));
-    set(guiData.confText, 'String', sprintf('Confidence: %.2f%%', max(score) * 100));
-
-    % Statistik fitur
-    featTxt = sprintf('HOG dim: %d | mean: %.4f | std: %.4f | max: %.4f', ...
-        length(hog), mean(hog), std(hog), max(hog));
-    set(guiData.featureStats, 'String', featTxt);
+    
+    resultsStr = '';
+    if guiData.showAll
+        validResults = sortedScores >= 0.1;
+        numResults = sum(validResults);
+    else
+        numResults = min(3, length(sortedScores));
+    end
+    
+    for i = 1:numResults
+        if guiData.showAll && sortedScores(i) < 0.1
+            break;
+        end
+        confidence = sortedScores(i) * 100;
+        digit = classLabels(sortedIndices(i));
+        resultsStr = sprintf('%sDigit %s: %.1f%%\n', resultsStr, string(digit), confidence);
+    end
+    
+    set(guiData.resultsText, 'String', resultsStr);
 end
